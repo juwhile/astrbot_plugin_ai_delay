@@ -50,11 +50,10 @@ class AiDelayPlugin(Star):
         session = event.unified_msg_origin
         now = time.monotonic()
         self._last_msg_time[session] = now
-        # 本条文本进入合并缓冲区
+        # 本条文本进入合并缓冲区（空文本=图片/表情等，用占位符保留，避免整批为空被吞）
         text = (event.message_str or "").strip()
         self._msg_buffer.setdefault(session, [])
-        if text:
-            self._msg_buffer[session].append(text)
+        self._msg_buffer[session].append(text if text else "[图片/表情]")
         await asyncio.sleep(window)
         if self._last_msg_time.get(session) != now:
             # 后面还有新消息：本条交给最新那条的请求处理
@@ -64,7 +63,7 @@ class AiDelayPlugin(Star):
         # 本条是最后一条：把缓冲区里合并的所有消息一起发给 AI
         buf = self._msg_buffer.get(session) or []
         self._msg_buffer[session] = []
-        if len(buf) > 1:
+        if buf:
             combined = "\n".join(f"[连发消息{i+1}] {t}" for i, t in enumerate(buf))
             try:
                 event.message_str = combined
