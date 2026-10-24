@@ -1,6 +1,7 @@
 import asyncio
 import random
 import re
+import time
 
 from astrbot.api import logger, AstrBotConfig
 from astrbot.api.event import filter, AstrMessageEvent
@@ -15,6 +16,8 @@ class AiDelayPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
         self.config = config
+        self._last_msg_time = {}  # 会话ID -> 最后一条消息时间戳（消息合并用）
+        self._msg_buffer = {}  # 会话ID -> [被合并消息的文本列表]
 
     def _get_delay_range(self):
         try:
@@ -31,6 +34,44 @@ class AiDelayPlugin(Star):
         if isinstance(exempt, str):
             exempt = [exempt]
         return str(event.get_sender_id()) in {str(x).strip() for x in exempt}
+
+    @filter.event_message_type(filter.EventMessageType.ALL)
+    async def merge_burst_messages(self, event: AstrMessageEvent):
+        """消息合并窗口：连发多条消息时，把内容合并后只回复最后一条"""
+        try:
+            window = float(self.config.get("merge_window", 5))
+        except (TypeError, ValueError):
+            window = 5.0
+        if window <= 0:
+            return
+        # 指令不合并（避免影响 /延迟测试 等命令）
+        if event.message_str.startswith("/"):
+            return
+        session = event.unified_msg_origin
+        now = time.monotonic()
+        self._last_msg_time[session] = now
+        # 本条文本进入合并缓冲区
+        text = (event.message_str or "").strip()
+        self._msg_buffer.setdefault(session, [])
+        if text:
+            self._msg_buffer[session].append(text)
+        await asyncio.sleep(window)
+        if self._last_msg_time.get(session) != now:
+            # 后面还有新消息：本条交给最新那条的请求处理
+            logger.info("[AI延迟] 会话在合并窗口内收到新消息，本条文本并入下一条请求")
+            event.stop_event()
+            return
+        # 本条是最后一条：把缓冲区里合并的所有消息一起发给 AI
+        buf = self._msg_buffer.get(session) or []
+        self._msg_buffer[session] = []
+        if len(buf) > 1:
+            combined = "\n".join(f"[连发消息{i+1}] {t}" for i, t in enumerate(buf))
+            try:
+                event.message_str = combined
+                event.message_obj.message_str = combined
+            except Exception:
+                pass
+            logger.info(f"[AI延迟] 已合并 {len(buf)} 条连发消息一起请求 AI")
 
     @filter.on_llm_response()
     async def on_llm_resp(self, event: AstrMessageEvent, resp):
