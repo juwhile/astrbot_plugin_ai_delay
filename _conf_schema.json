@@ -1,0 +1,20 @@
+{
+  "min_delay": {
+    "description": "最小随机延迟（秒）",
+    "type": "int",
+    "hint": "AI 回复前的最小等待时间",
+    "default": 1
+  },
+  "max_delay": {
+    "description": "最大随机延迟（秒）",
+    "type": "int",
+    "hint": "AI 回复前的最大等待时间",
+    "default": 5
+  },
+  "exempt_ids": {
+    "description": "免延迟用户ID列表",
+    "type": "list",
+    "hint": "列表中的用户ID（发送者ID，可用/sid获取）AI回复不延迟",
+    "default": []
+  }
+}
