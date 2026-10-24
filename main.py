@@ -35,6 +35,9 @@ class AiDelayPlugin(Star):
             exempt = [exempt]
         return str(event.get_sender_id()) in {str(x).strip() for x in exempt}
 
+    # 视为"有实际内容"的消息组件类型
+    _CONTENT_TYPES = {"Plain", "Image", "Record", "Video", "File", "Json", "Xml", "Reply", "At"}
+
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def merge_burst_messages(self, event: AstrMessageEvent):
         """消息合并窗口：连发多条消息时，把内容合并后只回复最后一条"""
@@ -47,13 +50,36 @@ class AiDelayPlugin(Star):
         # 指令不合并（避免影响 /延迟测试 等命令）
         if event.message_str.startswith("/"):
             return
+        text = (event.message_str or "").strip()
+        # 无文本且无内容组件的事件（对方正在输入、心跳等空壳）直接忽略，
+        # 不进缓冲、不重置窗口、不触发回复
+        if not text:
+            has_content = False
+            for comp in (event.message_obj.message or []):
+                ctype = str(getattr(comp, "type", "") or type(comp).__name__)
+                if ctype in self._CONTENT_TYPES:
+                    has_content = True
+                    break
+            if not has_content:
+                event.stop_event()
+                return
         session = event.unified_msg_origin
         now = time.monotonic()
         self._last_msg_time[session] = now
-        # 本条文本进入合并缓冲区（空文本=图片/表情等，用占位符保留，避免整批为空被吞）
-        text = (event.message_str or "").strip()
-        self._msg_buffer.setdefault(session, [])
-        self._msg_buffer[session].append(text if text else "[图片/表情]")
+        # 本条进入合并缓冲区：有文本用文本，纯图片/语音等用对应占位符
+        if text:
+            self._msg_buffer.setdefault(session, []).append(text)
+        else:
+            placeholder = "[图片]"
+            for comp in (event.message_obj.message or []):
+                ctype = str(getattr(comp, "type", "") or type(comp).__name__)
+                if ctype == "Record":
+                    placeholder = "[语音]"
+                    break
+                if ctype == "Video":
+                    placeholder = "[视频]"
+                    break
+            self._msg_buffer.setdefault(session, []).append(placeholder)
         await asyncio.sleep(window)
         if self._last_msg_time.get(session) != now:
             # 后面还有新消息：本条交给最新那条的请求处理
