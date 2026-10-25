@@ -56,7 +56,8 @@ class AiDelayPlugin(Star):
         if not text:
             has_content = False
             for comp in (event.message_obj.message or []):
-                ctype = str(getattr(comp, "type", "") or type(comp).__name__)
+                # 枚举 str() 结果形如 "ComponentType.Image"，取最后一段归一化
+                ctype = str(getattr(comp, "type", "") or type(comp).__name__).split(".")[-1]
                 if ctype in self._CONTENT_TYPES:
                     has_content = True
                     break
@@ -72,7 +73,7 @@ class AiDelayPlugin(Star):
         else:
             placeholder = "[图片]"
             for comp in (event.message_obj.message or []):
-                ctype = str(getattr(comp, "type", "") or type(comp).__name__)
+                ctype = str(getattr(comp, "type", "") or type(comp).__name__).split(".")[-1]
                 if ctype == "Record":
                     placeholder = "[语音]"
                     break
