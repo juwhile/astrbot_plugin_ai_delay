@@ -11,7 +11,7 @@ from astrbot.api.star import Context, Star, register
 _TOOL_ECHO_RE = re.compile(r"\[调用工具[^\]]*\]", re.DOTALL)
 
 
-@register("astrbot_plugin_ai_delay", "uwhile", "AI回复随机延迟，白名单ID豁免", "1.2.0")
+@register("astrbot_plugin_ai_delay", "uwhile", "AI回复随机延迟，白名单ID豁免", "1.2.1")
 class AiDelayPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)

@@ -1,5 +1,5 @@
 name: astrbot_plugin_ai_delay
 desc: 让机器人回复更像真人：AI 回复随机延迟，连发消息自动合并成一条再回复，表情包也能正常回应。支持免延迟、免合并双名单，延迟时间和合并窗口均可在配置中调整。
-version: v1.2.0
+version: v1.2.1
 author: uwhile
 repo: https://github.com/juwhile/astrbot_plugin_ai_delay
