@@ -35,20 +35,12 @@ class AiDelayPlugin(Star):
             exempt = [exempt]
         return str(event.get_sender_id()) in {str(x).strip() for x in exempt}
 
-    def _merge_enabled(self, event: AstrMessageEvent) -> bool:
-        """自动合并白名单：列表为空则对所有人启用合并；非空则仅列表内的用户/群启用"""
-        wl = self.config.get("merge_whitelist", [])
-        if isinstance(wl, str):
-            wl = [wl]
-        wl = {str(x).strip() for x in wl if str(x).strip()}
-        if not wl:
-            return True
-        ids = {
-            str(event.get_sender_id() or ""),
-            str(getattr(event, "get_group_id", lambda: "")() or ""),
-            str(event.unified_msg_origin or ""),
-        }
-        return bool(ids & wl)
+    def _merge_exempt(self, event: AstrMessageEvent) -> bool:
+        """免合并名单：名单内的用户不做合并等待，直接走原回复流程"""
+        exempt = self.config.get("merge_exempt_ids", [])
+        if isinstance(exempt, str):
+            exempt = [exempt]
+        return str(event.get_sender_id()) in {str(x).strip() for x in exempt}
 
     # 视为"有实际内容"的消息组件类型
     _CONTENT_TYPES = {"Plain", "Image", "Record", "Video", "File", "Json", "Xml", "Reply", "At"}
@@ -65,8 +57,8 @@ class AiDelayPlugin(Star):
         # 指令不合并（避免影响 /延迟测试 等命令）
         if event.message_str.startswith("/"):
             return
-        # 自动合并白名单：不在名单内的不合并、不拦截
-        if not self._merge_enabled(event):
+        # 免合并名单：名单内的用户不合并、不等待
+        if self._merge_exempt(event):
             return
         text = (event.message_str or "").strip()
         # 无文本且无内容组件的事件（对方正在输入、心跳等空壳）直接忽略，

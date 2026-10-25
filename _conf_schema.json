@@ -23,10 +23,10 @@
     "hint": "用户连发多条消息时，等这段时间没有新消息才回复；被合并消息的文本会拼接后与最后一条一起发给AI。0 表示关闭合并",
     "default": 5
   },
-  "merge_whitelist": {
-    "description": "自动合并白名单",
+  "merge_exempt_ids": {
+    "description": "免合并用户ID列表",
     "type": "list",
-    "hint": "留空 = 所有用户/群都启用消息合并；填入ID（用户ID、群ID，可用/sid获取）后，仅名单内的用户/群启用合并",
+    "hint": "列表中的用户ID（发送者ID，可用/sid获取）消息不参与合并等待，直接走原回复流程",
     "default": []
   }
 }
