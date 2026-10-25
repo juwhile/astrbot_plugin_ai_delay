@@ -1,5 +1,5 @@
 name: astrbot_plugin_ai_delay
-desc: AI 回复随机延迟，白名单ID豁免。延迟范围和豁免名单可在插件配置中调整。
-version: v1.1.0
+desc: AI 回复随机延迟，白名单ID豁免。支持连发消息合并窗口、纯媒体占位符、免延迟/免合并双名单，均可配置。
+version: v1.2.0
 author: uwhile
-repo: https://github.com/uwhile/astrbot_plugin_ai_delay
+repo: https://github.com/juwhile/astrbot_plugin_ai_delay
