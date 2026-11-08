@@ -15,8 +15,8 @@ from astrbot.api.star import Context, Star, register
 # 匹配模型复述的工具调用文本，如 [调用工具 image-analysis: {...}]
 _TOOL_ECHO_RE = re.compile(r"\[调用工具[^\]]*\]", re.DOTALL)
 
-# 图片/文件组件类型（需保存到本地以防 URL 过期）
-_IMAGE_COMPONENT_TYPES = {"Image", "File", "Record", "Video"}
+# 图片组件类型（只缓存真正的图片，不缓存 APK/ZIP 等普通文件，避免模型识别报错）
+_IMAGE_COMPONENT_TYPES = {"Image"}
 # 图片缓存保留时长（秒）
 _IMG_TTL = 60
 
@@ -105,7 +105,7 @@ class AiDelayPlugin(Star):
     _CONTENT_TYPES = {"Plain", "Image", "Record", "Video", "File", "Json", "Xml", "Reply", "At"}
 
     async def _save_media_to_cache(self, event: AstrMessageEvent) -> None:
-        """把群聊图片/文件下载到本地缓存，替换组件URL，1分钟后自动删除。"""
+        """把群聊图片下载到本地缓存，替换组件URL，1分钟后自动删除。"""
         if not self._is_group(event):
             return
         try:
@@ -125,7 +125,7 @@ class AiDelayPlugin(Star):
             if not urls:
                 return
 
-            # __file__ = AstrBot/data/plugins/astrbot_plugin_ai_delay/main.py
+            # 修正了这里的路径，去掉了多余的 data/data
             base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
             save_dir = os.path.join(base, "data", "plugin_data", "astrbot_plugin_ai_delay", "img_cache")
             os.makedirs(save_dir, exist_ok=True)
