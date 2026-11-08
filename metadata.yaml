@@ -3,3 +3,9 @@ desc: 让机器人回复更像真人：AI 回复随机延迟，连发消息自�
 version: v1.2.1
 author: uwhile
 repo: https://github.com/juwhile/astrbot_plugin_ai_delay
+config:
+  - key: image_collect
+    name: 群聊图片收集
+    description: 开启后，收到群聊图片/文件会自动下载到本地缓存（1分钟后删除），防止URL过期导致AI识别不到图片。即使群聊延迟合并开关关闭也生效。
+    type: boolean
+    default: true
