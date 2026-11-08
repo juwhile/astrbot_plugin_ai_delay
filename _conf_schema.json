@@ -1,4 +1,10 @@
 {
+  "group_switch": {
+    "description": "群聊延迟与合并开关",
+    "type": "bool",
+    "hint": "开启：群聊消息也应用延迟和合并；关闭：群聊消息不延迟、不合并，仅私聊生效",
+    "default": true
+  },
   "min_delay": {
     "description": "最小随机延迟（秒）",
     "type": "int",
@@ -28,5 +34,11 @@
     "type": "list",
     "hint": "列表中的用户ID（发送者ID，可用/sid获取）消息不参与合并等待，直接走原回复流程",
     "default": []
+  },
+  "image_collect": {
+    "description": "群聊图片收集",
+    "type": "bool",
+    "hint": "开启后，收到群聊图片/文件会自动下载到本地缓存（1分钟后删除），防止URL过期导致AI识别不到图片。即使群聊延迟合并开关关闭也生效。",
+    "default": true
   }
 }

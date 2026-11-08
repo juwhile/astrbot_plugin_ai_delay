@@ -1,5 +1,4 @@
 import asyncio
-import json
 import os
 import random
 import re
@@ -16,8 +15,7 @@ _TOOL_ECHO_RE = re.compile(r"\[调用工具[^\]]*\]", re.DOTALL)
 
 # 图片/文件组件类型（需保存到本地以防 URL 过期）
 _IMAGE_COMPONENT_TYPES = {"Image", "File", "Record", "Video"}
-# 图片保存目录（相对 AstrBot data 目录），1 分钟后自动删除
-_IMG_SAVE_DIR = "data/temp/img_cache"
+# 图片缓存保留时长（秒），1 分钟后自动删除
 _IMG_TTL = 60  # 秒
 
 
@@ -31,7 +29,13 @@ def _get_or_new_loop():
         return loop
 
 
-@register("astrbot_plugin_ai_delay", "uwhile", "AI回复随机延迟，白名单ID豁免", "1.2.1")
+def _write_file(path: str, data: bytes) -> None:
+    """把 bytes 写入文件（在 asyncio.to_thread 中执行，避免阻塞事件循环）。"""
+    with open(path, "wb") as f:
+        f.write(data)
+
+
+@register("astrbot_plugin_ai_delay", "uwhile", "AI回复随机延迟，白名单ID豁免", "1.2.2")
 class AiDelayPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
@@ -55,21 +59,10 @@ class AiDelayPlugin(Star):
 
         即使 group_switch=False（群聊不延迟不合并），只要本开关开启，
         仍会在收到群聊图片时下载到本地缓存，防止 URL 过期导致 AI 识别不到。
-        优先读 self.config；若未注入则直接读配置文件 JSON 兜底。
+        由 _conf_schema.json 的 image_collect 定义注入到 self.config。
         """
         try:
-            v = self.config.get("image_collect", None)
-            if v is not None:
-                return bool(v)
-        except Exception:
-            pass
-        # 兜底：直接读 AstrBot 配置 JSON 文件
-        try:
-            cfg_path = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-                "data", "config", "astrbot_plugin_ai_delay_config.json")
-            with open(cfg_path, "r", encoding="utf-8") as f:
-                return bool(json.load(f).get("image_collect", True))
+            return bool(self.config.get("image_collect", True))
         except Exception:
             return True
 
@@ -113,12 +106,15 @@ class AiDelayPlugin(Star):
     # 视为"有实际内容"的消息组件类型
     _CONTENT_TYPES = {"Plain", "Image", "Record", "Video", "File", "Json", "Xml", "Reply", "At"}
 
-    def _save_media_to_cache(self, event: AstrMessageEvent) -> None:
+    async def _save_media_to_cache(self, event: AstrMessageEvent) -> None:
         """把消息里的图片/文件组件下载到本地缓存，1分钟后自动删除。
 
         QQ 图片 URL 会过期，AI 识别前可能已 403 失效。收到含图片的
         消息时立即下载到本地文件，并替换组件 URL 为本地路径，确保
         AI 调用 image-analysis 时读取的是不过期的本地文件。
+
+        使用 asyncio.to_thread() 把同步阻塞的下载/写盘移出事件循环，
+        避免含图片消息卡住整个 AstrBot 的消息处理（审查反馈点1）。
         """
         # 图片收集只对群聊生效：私聊图片 URL 一般不常过期，无需缓存，
         # 且私聊消息不应被图片缓存/挂载逻辑干扰。
@@ -146,11 +142,11 @@ class AiDelayPlugin(Star):
             if not urls:
                 return
 
-            # 确保保存目录存在（AstrBot 根目录 data/temp/img_cache）
+            # 确保保存目录存在（AstrBot 插件数据目录，审查反馈点2）
             # __file__ = AstrBot/data/plugins/astrbot_plugin_ai_delay/main.py
-            # 上四级才是 AstrBot 根目录
-            base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-            save_dir = os.path.join(base, "data", "temp", "img_cache")
+            # 上三级才是 AstrBot 根目录
+            base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            save_dir = os.path.join(base, "data", "plugin_data", "astrbot_plugin_ai_delay", "img_cache")
             os.makedirs(save_dir, exist_ok=True)
 
             saved_paths = []
@@ -159,11 +155,15 @@ class AiDelayPlugin(Star):
                     ext = os.path.splitext(url.split("?")[0])[1] or ".jpg"
                     fname = f"{int(time.time()*1000)}_{abs(hash(url))%10**8}{ext}"
                     path = os.path.join(save_dir, fname)
-                    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-                    with urllib.request.urlopen(req, timeout=10) as r:
-                        data = r.read()
-                    with open(path, "wb") as f:
-                        f.write(data)
+
+                    # 同步下载/写盘放到线程池执行，不阻塞事件循环
+                    def _download():
+                        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+                        with urllib.request.urlopen(req, timeout=10) as r:
+                            return r.read()
+
+                    data = await asyncio.to_thread(_download)
+                    await asyncio.to_thread(_write_file, path, data)
                     saved_paths.append((ctype, path, url))
                     logger.info(f"[图片缓存] 已保存 {ctype} -> {path} ({len(data)}B)")
                     # 1分钟后删除（异步线程安全）
@@ -238,7 +238,7 @@ class AiDelayPlugin(Star):
                     f"config_keys={list(self.config.keys()) if hasattr(self.config, 'keys') else 'n/a'}")
         if _ic:
             try:
-                self._save_media_to_cache(event)
+                await self._save_media_to_cache(event)
             except Exception as e:
                 logger.warning(f"[AI延迟] 保存媒体到缓存失败: {e}")
         # 群聊延迟与合并开关：关闭时群聊消息不参与合并，直接放行。
@@ -279,7 +279,7 @@ class AiDelayPlugin(Star):
         # 先保存图片/文件到本地缓存（防 URL 过期），再判断是否空壳消息。
         # 这样 AI 调用 image-analysis 时读到的是本地文件，不会 403。
         try:
-            self._save_media_to_cache(event)
+            await self._save_media_to_cache(event)
         except Exception as e:
             logger.warning(f"[AI延迟] 保存媒体到缓存失败: {e}")
         # 无文本且无内容组件的事件（对方正在输入、心跳等空壳）直接忽略，
